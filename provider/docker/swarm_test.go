@@ -15,6 +15,1275 @@ import (
 	"golang.org/x/net/context"
 )
 
+func TestDockerGetFrontendName(t *testing.T) {
+	provider := &Docker{
+		Domain: "docker.localhost",
+	}
+
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expected: "Host-foo-docker-localhost",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "bar",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.rule": "Headers:User-Agent,bat/0.1.0",
+					},
+				},
+			},
+			expected: "Headers-User-Agent-bat-0-1-0",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.rule": "Host:foo.bar",
+					},
+				},
+			},
+			expected: "Host-foo-bar",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.rule": "Path:/test",
+					},
+				},
+			},
+			expected: "Path-test",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.rule": "PathPrefix:/test2",
+					},
+				},
+			},
+			expected: "PathPrefix-test2",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getFrontendName(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetFrontendRule(t *testing.T) {
+	provider := &Docker{
+		Domain: "docker.localhost",
+	}
+
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expected: "Host:foo.docker.localhost",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "bar",
+				},
+				Config: &container.Config{},
+			},
+			expected: "Host:bar.docker.localhost",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.rule": "Host:foo.bar",
+					},
+				},
+			},
+			expected: "Host:foo.bar",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.rule": "Path:/test",
+					},
+				},
+			},
+			expected: "Path:/test",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getFrontendRule(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetBackend(t *testing.T) {
+	provider := &Docker{}
+
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expected: "foo",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "bar",
+				},
+				Config: &container.Config{},
+			},
+			expected: "bar",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.backend": "foobar",
+					},
+				},
+			},
+			expected: "foobar",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getBackend(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetIPAddress(t *testing.T) { // TODO
+	provider := &Docker{}
+
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "bar",
+				},
+				Config: &container.Config{},
+				NetworkSettings: &docker.NetworkSettings{
+					Networks: map[string]*network.EndpointSettings{
+						"testnet": {
+							IPAddress: "10.11.12.13",
+						},
+					},
+				},
+			},
+			expected: "10.11.12.13",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "bar",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.docker.network": "testnet",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					Networks: map[string]*network.EndpointSettings{
+						"nottestnet": {
+							IPAddress: "10.11.12.13",
+						},
+					},
+				},
+			},
+			expected: "10.11.12.13",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "bar",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.docker.network": "testnet2",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					Networks: map[string]*network.EndpointSettings{
+						"testnet1": {
+							IPAddress: "10.11.12.13",
+						},
+						"testnet2": {
+							IPAddress: "10.11.12.14",
+						},
+					},
+				},
+			},
+			expected: "10.11.12.14",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "bar",
+					HostConfig: &container.HostConfig{
+						NetworkMode: "host",
+					},
+				},
+				Config: &container.Config{
+					Labels: map[string]string{},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					Networks: map[string]*network.EndpointSettings{
+						"testnet1": {
+							IPAddress: "10.11.12.13",
+						},
+						"testnet2": {
+							IPAddress: "10.11.12.14",
+						},
+					},
+				},
+			},
+			expected: "127.0.0.1",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getIPAddress(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetPort(t *testing.T) {
+	provider := &Docker{}
+
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config:          &container.Config{},
+				NetworkSettings: &docker.NetworkSettings{},
+			},
+			expected: "",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "bar",
+				},
+				Config: &container.Config{},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			expected: "80",
+		},
+		// FIXME handle this better..
+		// {
+		// 	container: docker.ContainerJSON{
+		// 		Name:   "bar",
+		// 		Config: &container.Config{},
+		// 		NetworkSettings: &docker.NetworkSettings{
+		// 			Ports: map[docker.Port][]docker.PortBinding{
+		// 				"80/tcp":  []docker.PortBinding{},
+		// 				"443/tcp": []docker.PortBinding{},
+		// 			},
+		// 		},
+		// 	},
+		// 	expected: "80",
+		// },
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.port": "8080",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{},
+			},
+			expected: "8080",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.port": "8080",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			expected: "8080",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test-multi-ports",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.port": "8080",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"8080/tcp": {},
+							"80/tcp":   {},
+						},
+					},
+				},
+			},
+			expected: "8080",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getPort(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetWeight(t *testing.T) {
+	provider := &Docker{}
+
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expected: "0",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.weight": "10",
+					},
+				},
+			},
+			expected: "10",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getWeight(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetDomain(t *testing.T) {
+	provider := &Docker{
+		Domain: "docker.localhost",
+	}
+
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expected: "docker.localhost",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.domain": "foo.bar",
+					},
+				},
+			},
+			expected: "foo.bar",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getDomain(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetProtocol(t *testing.T) {
+	provider := &Docker{}
+
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expected: "http",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.protocol": "https",
+					},
+				},
+			},
+			expected: "https",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getProtocol(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetPassHostHeader(t *testing.T) {
+	provider := &Docker{}
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expected: "true",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "test",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.passHostHeader": "false",
+					},
+				},
+			},
+			expected: "false",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := provider.getPassHostHeader(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %q, got %q", e.expected, actual)
+			}
+		})
+	}
+}
+
+func TestDockerGetLabel(t *testing.T) {
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expected: "Label not found:",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"foo": "bar",
+					},
+				},
+			},
+			expected: "",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			label, err := getLabel(dockerData, "foo")
+			if e.expected != "" {
+				if err == nil || !strings.Contains(err.Error(), e.expected) {
+					t.Errorf("expected an error with %q, got %v", e.expected, err)
+				}
+			} else {
+				if label != "bar" {
+					t.Errorf("expected label 'bar', got %s", label)
+				}
+			}
+		})
+	}
+}
+
+func TestDockerGetLabels(t *testing.T) {
+	containers := []struct {
+		container      docker.ContainerJSON
+		expectedLabels map[string]string
+		expectedError  string
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{},
+			},
+			expectedLabels: map[string]string{},
+			expectedError:  "Label not found:",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"foo": "fooz",
+					},
+				},
+			},
+			expectedLabels: map[string]string{
+				"foo": "fooz",
+			},
+			expectedError: "Label not found: bar",
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "foo",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"foo": "fooz",
+						"bar": "barz",
+					},
+				},
+			},
+			expectedLabels: map[string]string{
+				"foo": "fooz",
+				"bar": "barz",
+			},
+			expectedError: "",
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			labels, err := getLabels(dockerData, []string{"foo", "bar"})
+			if !reflect.DeepEqual(labels, e.expectedLabels) {
+				t.Errorf("expect %v, got %v", e.expectedLabels, labels)
+			}
+			if e.expectedError != "" {
+				if err == nil || !strings.Contains(err.Error(), e.expectedError) {
+					t.Errorf("expected an error with %q, got %v", e.expectedError, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDockerTraefikFilter(t *testing.T) {
+	containers := []struct {
+		container docker.ContainerJSON
+		expected  bool
+		provider  *Docker
+	}{
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config:          &container.Config{},
+				NetworkSettings: &docker.NetworkSettings{},
+			},
+			expected: false,
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.enable": "false",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+			expected: false,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.rule": "Host:foo.bar",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+			expected: true,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container-multi-ports",
+				},
+				Config: &container.Config{},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp":  {},
+							"443/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+			expected: true,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+			expected: true,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.port": "80",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp":  {},
+							"443/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+			expected: true,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.enable": "true",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+			expected: true,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.enable": "anything",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+			expected: true,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.frontend.rule": "Host:foo.bar",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
+			expected: true,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: false,
+			},
+			expected: false,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.enable": "true",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				Domain:           "test",
+				ExposedByDefault: false,
+			},
+			expected: true,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.enable": "true",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				ExposedByDefault: false,
+			},
+			expected: false,
+		},
+		{
+			container: docker.ContainerJSON{
+				ContainerJSONBase: &docker.ContainerJSONBase{
+					Name: "container",
+				},
+				Config: &container.Config{
+					Labels: map[string]string{
+						"traefik.enable":        "true",
+						"traefik.frontend.rule": "Host:i.love.this.host",
+					},
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					NetworkSettingsBase: docker.NetworkSettingsBase{
+						Ports: nat.PortMap{
+							"80/tcp": {},
+						},
+					},
+				},
+			},
+			provider: &Docker{
+				ExposedByDefault: false,
+			},
+			expected: true,
+		},
+	}
+
+	for containerID, e := range containers {
+		e := e
+		t.Run(strconv.Itoa(containerID), func(t *testing.T) {
+			t.Parallel()
+			dockerData := parseContainer(e.container)
+			actual := e.provider.containerFilter(dockerData)
+			if actual != e.expected {
+				t.Errorf("expected %v for %+v, got %+v", e.expected, e, actual)
+			}
+		})
+	}
+}
+
+func TestDockerLoadDockerConfig(t *testing.T) {
+	cases := []struct {
+		containers        []docker.ContainerJSON
+		expectedFrontends map[string]*types.Frontend
+		expectedBackends  map[string]*types.Backend
+	}{
+		{
+			containers:        []docker.ContainerJSON{},
+			expectedFrontends: map[string]*types.Frontend{},
+			expectedBackends:  map[string]*types.Backend{},
+		},
+		{
+			containers: []docker.ContainerJSON{
+				{
+					ContainerJSONBase: &docker.ContainerJSONBase{
+						Name: "test",
+					},
+					Config: &container.Config{},
+					NetworkSettings: &docker.NetworkSettings{
+						NetworkSettingsBase: docker.NetworkSettingsBase{
+							Ports: nat.PortMap{
+								"80/tcp": {},
+							},
+						},
+						Networks: map[string]*network.EndpointSettings{
+							"bridge": {
+								IPAddress: "127.0.0.1",
+							},
+						},
+					},
+				},
+			},
+			expectedFrontends: map[string]*types.Frontend{
+				"frontend-Host-test-docker-localhost": {
+					Backend:        "backend-test",
+					PassHostHeader: true,
+					EntryPoints:    []string{},
+					Routes: map[string]types.Route{
+						"route-frontend-Host-test-docker-localhost": {
+							Rule: "Host:test.docker.localhost",
+						},
+					},
+				},
+			},
+			expectedBackends: map[string]*types.Backend{
+				"backend-test": {
+					Servers: map[string]types.Server{
+						"server-test": {
+							URL:    "http://127.0.0.1:80",
+							Weight: 0,
+						},
+					},
+					CircuitBreaker: nil,
+				},
+			},
+		},
+		{
+			containers: []docker.ContainerJSON{
+				{
+					ContainerJSONBase: &docker.ContainerJSONBase{
+						Name: "test1",
+					},
+					Config: &container.Config{
+						Labels: map[string]string{
+							"traefik.backend":              "foobar",
+							"traefik.frontend.entryPoints": "http,https",
+						},
+					},
+					NetworkSettings: &docker.NetworkSettings{
+						NetworkSettingsBase: docker.NetworkSettingsBase{
+							Ports: nat.PortMap{
+								"80/tcp": {},
+							},
+						},
+						Networks: map[string]*network.EndpointSettings{
+							"bridge": {
+								IPAddress: "127.0.0.1",
+							},
+						},
+					},
+				},
+				{
+					ContainerJSONBase: &docker.ContainerJSONBase{
+						Name: "test2",
+					},
+					Config: &container.Config{
+						Labels: map[string]string{
+							"traefik.backend": "foobar",
+						},
+					},
+					NetworkSettings: &docker.NetworkSettings{
+						NetworkSettingsBase: docker.NetworkSettingsBase{
+							Ports: nat.PortMap{
+								"80/tcp": {},
+							},
+						},
+						Networks: map[string]*network.EndpointSettings{
+							"bridge": {
+								IPAddress: "127.0.0.1",
+							},
+						},
+					},
+				},
+			},
+			expectedFrontends: map[string]*types.Frontend{
+				"frontend-Host-test1-docker-localhost": {
+					Backend:        "backend-foobar",
+					PassHostHeader: true,
+					EntryPoints:    []string{"http", "https"},
+					Routes: map[string]types.Route{
+						"route-frontend-Host-test1-docker-localhost": {
+							Rule: "Host:test1.docker.localhost",
+						},
+					},
+				},
+				"frontend-Host-test2-docker-localhost": {
+					Backend:        "backend-foobar",
+					PassHostHeader: true,
+					EntryPoints:    []string{},
+					Routes: map[string]types.Route{
+						"route-frontend-Host-test2-docker-localhost": {
+							Rule: "Host:test2.docker.localhost",
+						},
+					},
+				},
+			},
+			expectedBackends: map[string]*types.Backend{
+				"backend-foobar": {
+					Servers: map[string]types.Server{
+						"server-test1": {
+							URL:    "http://127.0.0.1:80",
+							Weight: 0,
+						},
+						"server-test2": {
+							URL:    "http://127.0.0.1:80",
+							Weight: 0,
+						},
+					},
+					CircuitBreaker: nil,
+				},
+			},
+		},
+		{
+			containers: []docker.ContainerJSON{
+				{
+					ContainerJSONBase: &docker.ContainerJSONBase{
+						Name: "test1",
+					},
+					Config: &container.Config{
+						Labels: map[string]string{
+							"traefik.backend":                           "foobar",
+							"traefik.frontend.entryPoints":              "http,https",
+							"traefik.backend.maxconn.amount":            "1000",
+							"traefik.backend.maxconn.extractorfunc":     "somethingelse",
+							"traefik.backend.loadbalancer.method":       "drr",
+							"traefik.backend.circuitbreaker.expression": "NetworkErrorRatio() > 0.5",
+						},
+					},
+					NetworkSettings: &docker.NetworkSettings{
+						NetworkSettingsBase: docker.NetworkSettingsBase{
+							Ports: nat.PortMap{
+								"80/tcp": {},
+							},
+						},
+						Networks: map[string]*network.EndpointSettings{
+							"bridge": {
+								IPAddress: "127.0.0.1",
+							},
+						},
+					},
+				},
+			},
+			expectedFrontends: map[string]*types.Frontend{
+				"frontend-Host-test1-docker-localhost": {
+					Backend:        "backend-foobar",
+					PassHostHeader: true,
+					EntryPoints:    []string{"http", "https"},
+					Routes: map[string]types.Route{
+						"route-frontend-Host-test1-docker-localhost": {
+							Rule: "Host:test1.docker.localhost",
+						},
+					},
+				},
+			},
+			expectedBackends: map[string]*types.Backend{
+				"backend-foobar": {
+					Servers: map[string]types.Server{
+						"server-test1": {
+							URL:    "http://127.0.0.1:80",
+							Weight: 0,
+						},
+					},
+					CircuitBreaker: &types.CircuitBreaker{
+						Expression: "NetworkErrorRatio() > 0.5",
+					},
+					LoadBalancer: &types.LoadBalancer{
+						Method: "drr",
+					},
+					MaxConn: &types.MaxConn{
+						Amount:        1000,
+						ExtractorFunc: "somethingelse",
+					},
+				},
+			},
+		},
+	}
+
+	provider := &Docker{
+		Domain:           "docker.localhost",
+		ExposedByDefault: true,
+	}
+
+	for caseID, c := range cases {
+		c := c
+		t.Run(strconv.Itoa(caseID), func(t *testing.T) {
+			t.Parallel()
+			var dockerDataList []dockerData
+			for _, container := range c.containers {
+				dockerData := parseContainer(container)
+				dockerDataList = append(dockerDataList, dockerData)
+			}
+
+			actualConfig := provider.loadDockerConfig(dockerDataList)
+			// Compare backends
+			if !reflect.DeepEqual(actualConfig.Backends, c.expectedBackends) {
+				t.Errorf("expected %#v, got %#v", c.expectedBackends, actualConfig.Backends)
+			}
+			if !reflect.DeepEqual(actualConfig.Frontends, c.expectedFrontends) {
+				t.Errorf("expected %#v, got %#v", c.expectedFrontends, actualConfig.Frontends)
+			}
+		})
+	}
+}
+
 func TestSwarmGetFrontendName(t *testing.T) {
 	services := []struct {
 		service  swarm.Service
@@ -503,86 +1772,122 @@ func TestSwarmGetLabels(t *testing.T) {
 
 func TestSwarmTraefikFilter(t *testing.T) {
 	services := []struct {
-		service          swarm.Service
-		exposedByDefault bool
-		expected         bool
-		networks         map[string]*docker.NetworkResource
+		service  swarm.Service
+		expected bool
+		networks map[string]*docker.NetworkResource
+		provider *Docker
 	}{
 		{
 			service:          swarmService(),
-			exposedByDefault: true,
-			expected:         false,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: false,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
 		},
 		{
 			service: swarmService(serviceLabels(map[string]string{
 				"traefik.enable": "false",
 				"traefik.port":   "80",
 			})),
-			exposedByDefault: true,
-			expected:         false,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: false,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
 		},
 		{
 			service: swarmService(serviceLabels(map[string]string{
 				"traefik.frontend.rule": "Host:foo.bar",
 				"traefik.port":          "80",
 			})),
-			exposedByDefault: true,
-			expected:         true,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: true,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
 		},
 		{
 			service: swarmService(serviceLabels(map[string]string{
 				"traefik.port": "80",
 			})),
-			exposedByDefault: true,
-			expected:         true,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: true,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
 		},
 		{
 			service: swarmService(serviceLabels(map[string]string{
 				"traefik.enable": "true",
 				"traefik.port":   "80",
 			})),
-			exposedByDefault: true,
-			expected:         true,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: true,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
 		},
 		{
 			service: swarmService(serviceLabels(map[string]string{
 				"traefik.enable": "anything",
 				"traefik.port":   "80",
 			})),
-			exposedByDefault: true,
-			expected:         true,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: true,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
 		},
 		{
 			service: swarmService(serviceLabels(map[string]string{
 				"traefik.frontend.rule": "Host:foo.bar",
 				"traefik.port":          "80",
 			})),
-			exposedByDefault: true,
-			expected:         true,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: true,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: true,
+			},
 		},
 		{
 			service: swarmService(serviceLabels(map[string]string{
 				"traefik.port": "80",
 			})),
-			exposedByDefault: false,
-			expected:         false,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: false,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: false,
+			},
 		},
 		{
 			service: swarmService(serviceLabels(map[string]string{
 				"traefik.enable": "true",
 				"traefik.port":   "80",
 			})),
-			exposedByDefault: false,
-			expected:         true,
-			networks:         map[string]*docker.NetworkResource{},
+			expected: true,
+			networks: map[string]*docker.NetworkResource{},
+			provider: &Docker{
+				SwarmMode:        true,
+				Domain:           "test",
+				ExposedByDefault: false,
+			},
 		},
 	}
 
@@ -591,9 +1896,6 @@ func TestSwarmTraefikFilter(t *testing.T) {
 		t.Run(strconv.Itoa(serviceID), func(t *testing.T) {
 			t.Parallel()
 			dockerData := parseService(e.service, e.networks)
-			provider := &Provider{
-				SwarmMode: true,
-			}
 			provider.ExposedByDefault = e.exposedByDefault
 			actual := provider.containerFilter(dockerData)
 			if actual != e.expected {
