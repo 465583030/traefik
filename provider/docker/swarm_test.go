@@ -1778,7 +1778,7 @@ func TestSwarmTraefikFilter(t *testing.T) {
 		provider *Docker
 	}{
 		{
-			service:          swarmService(),
+			service:  swarmService(),
 			expected: false,
 			networks: map[string]*docker.NetworkResource{},
 			provider: &Docker{
